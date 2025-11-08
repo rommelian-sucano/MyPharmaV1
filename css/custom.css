@@ -1,0 +1,187 @@
+/* Custom styles for MyPharma */
+
+/* Hero section */
+.hero-section {
+    background: linear-gradient(rgba(0, 0, 0, 0.7), rgba(0, 0, 0, 0.7)), url('https://images.unsplash.com/photo-1584308666744-24d5c474f2ae?ixlib=rb-4.0.3&ixid=M3wxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8fA%3D%3D&auto=format&fit=crop&w=1200&q=80');
+    background-size: cover;
+    background-position: center;
+    height: 100vh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: white;
+}
+
+/* Search container */
+.search-container {
+    background: rgba(255, 255, 255, 0.9);
+    border-radius: 10px;
+    padding: 30px;
+    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.3);
+}
+
+/* Role cards */
+.role-card {
+    transition: transform 0.3s;
+    height: 100%;
+}
+
+.role-card:hover {
+    transform: translateY(-10px);
+}
+
+/* Notification panel */
+.notification-panel {
+    position: fixed;
+    top: 70px; /* Position below navbar */
+    right: 20px;
+    z-index: 1000;
+    max-width: 300px;
+    max-height: 80vh;
+    overflow-y: auto;
+}
+
+/* Notification panel on search page */
+.search-page .notification-panel {
+    top: 90px; /* Adjust for search page layout */
+}
+
+/* Notification content styling */
+.notification-panel .alert {
+    font-size: 0.9rem;
+    line-height: 1.4;
+}
+
+.notification-panel .alert i {
+    margin-right: 5px;
+}
+
+/* Search box */
+.search-box {
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15);
+}
+
+/* Pharmacy cards */
+.pharmacy-card {
+    transition: all 0.3s;
+    border-left: 4px solid #0d6efd;
+}
+
+.pharmacy-card:hover {
+    transform: translateY(-5px);
+    box-shadow: 0 10px 20px rgba(0, 0, 0, 0.1);
+}
+
+/* Price tags */
+.price-tag {
+    background-color: #0d6efd;
+    color: white;
+    padding: 5px 10px;
+    border-radius: 20px;
+    font-weight: bold;
+}
+
+.stock-low {
+    background-color: #dc3545;
+}
+
+/* Route line */
+.route-line {
+    stroke: #0d6efd;
+    stroke-width: 4;
+    stroke-opacity: 0.7;
+}
+
+/* User location marker */
+.user-location-marker {
+    background-color: #007bff;
+    width: 24px;
+    height: 24px;
+    border-radius: 50%;
+    border: 2px solid white;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+/* Pharmacy markers */
+.pharmacy-marker {
+    background-color: #28a745;
+    border: 2px solid white;
+    border-radius: 50%;
+    width: 24px;
+    height: 24px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: white;
+    font-weight: bold;
+}
+
+/* Stat cards */
+.stat-card {
+    transition: all 0.3s;
+}
+
+.stat-card:hover {
+    transform: translateY(-5px);
+    box-shadow: 0 10px 20px rgba(0, 0, 0, 0.1);
+}
+
+/* Medicine cards */
+.medicine-card {
+    transition: all 0.3s;
+}
+
+.medicine-card:hover {
+    transform: translateY(-5px);
+    box-shadow: 0 10px 20px rgba(0, 0, 0, 0.1);
+}
+
+/* Admin Dashboard Buttons */
+.btn-admin-action {
+    min-width: 90px;
+    font-weight: 500;
+}
+
+/* Map container */
+.map-container {
+    height: 200px;
+    width: 100%;
+    border: 1px solid #ddd;
+    border-radius: 5px;
+    margin-top: 10px;
+}
+
+/* Sidebar */
+.sidebar {
+    height: 100vh;
+    position: fixed;
+    overflow-y: auto;
+}
+
+.main-content {
+    margin-left: 280px;
+}
+
+/* Responsive adjustments */
+@media (max-width: 768px) {
+    .main-content {
+        margin-left: 0;
+    }
+    
+    .sidebar {
+        position: relative;
+        height: auto;
+    }
+    
+    .notification-panel {
+        position: fixed;
+        top: 70px;
+        right: 10px;
+        left: 10px;
+        max-width: calc(100% - 20px);
+        max-height: 60vh;
+        margin: 0;
+    }
+}

@@ -1,0 +1,205 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Metrics Dashboard</title>
+<link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+</head>
+<body class="bg-light">
+<div class="container py-4">
+  <div class="d-flex align-items-center justify-content-between mb-3">
+    <h1 class="h4 mb-0">Dashboard Metrics</h1>
+    <button id="reloadBtn" class="btn btn-primary btn-lg">Reload</button>
+  </div>
+
+  <div id="errorBanner" class="alert alert-warning d-none" role="alert"></div>
+
+  <div class="row g-3 mb-4">
+    <div class="col-6 col-md-4 col-lg-2">
+      <div class="card text-center">
+        <div class="card-body">
+          <div class="fw-semibold">Medicines</div>
+          <div id="totalMedicines" class="fs-3">0</div>
+        </div>
+      </div>
+    </div>
+    <div class="col-6 col-md-4 col-lg-2">
+      <div class="card text-center">
+        <div class="card-body">
+          <div class="fw-semibold">Pending Approvals</div>
+          <div id="pendingApprovals" class="fs-3">0</div>
+        </div>
+      </div>
+    </div>
+    <div class="col-6 col-md-4 col-lg-2">
+      <div class="card text-center">
+        <div class="card-body">
+          <div class="fw-semibold">Users</div>
+          <div id="totalUsers" class="fs-3">0</div>
+        </div>
+      </div>
+    </div>
+    <div class="col-6 col-md-4 col-lg-2">
+      <div class="card text-center">
+        <div class="card-body">
+          <div class="fw-semibold">Pharmacies</div>
+          <div id="totalPharmacies" class="fs-3">0</div>
+        </div>
+      </div>
+    </div>
+    <div class="col-6 col-md-4 col-lg-2">
+      <div class="card text-center">
+        <div class="card-body">
+          <div class="fw-semibold">Low Stock</div>
+          <div id="lowStock" class="fs-3">0</div>
+        </div>
+      </div>
+    </div>
+    <div class="col-6 col-md-4 col-lg-2">
+      <div class="card text-center">
+        <div class="card-body">
+          <div class="fw-semibold">Expiring Soon</div>
+          <div id="expiringSoon" class="fs-3">0</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="card mb-4">
+    <div class="card-header">Searches (Last 7 Days)</div>
+    <div class="card-body">
+      <div class="row">
+        <div class="col-lg-8 mb-3 mb-lg-0">
+          <canvas id="searchChart" height="120"></canvas>
+        </div>
+        <div class="col-lg-4">
+          <div class="table-responsive">
+            <table class="table table-sm align-middle mb-0">
+              <thead>
+                <tr>
+                  <th>Day</th>
+                  <th class="text-end">Count</th>
+                </tr>
+              </thead>
+              <tbody id="searchTableBody"></tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+const DEFAULT_METRICS = {
+  "totalMedicines": 5,
+  "pendingApprovals": 1,
+  "totalUsers": 3,
+  "totalPharmacies": 1,
+  "lowStock": 4,
+  "expiringSoon": 0,
+  "searches7Days": [
+    { "day": "Mon", "count": 42 },
+    { "day": "Tue", "count": 38 },
+    { "day": "Wed", "count": 57 },
+    { "day": "Thu", "count": 35 },
+    { "day": "Fri", "count": 64 },
+    { "day": "Sat", "count": 72 },
+    { "day": "Sun", "count": 50 }
+  ]
+};
+
+let chartRef = null;
+
+async function fetchMetrics() {
+  const sources = ['metrics.php', 'metrics.json'];
+  for (const url of sources) {
+    try {
+      const res = await fetch(url, { headers: { 'Accept': 'application/json' } });
+      if (res.ok) {
+        return await res.json();
+      }
+    } catch (_) {}
+  }
+  return DEFAULT_METRICS;
+}
+
+function renderMetrics(data) {
+  document.getElementById('totalMedicines').textContent = data.totalMedicines ?? 0;
+  document.getElementById('pendingApprovals').textContent = data.pendingApprovals ?? 0;
+  document.getElementById('totalUsers').textContent = data.totalUsers ?? 0;
+  document.getElementById('totalPharmacies').textContent = data.totalPharmacies ?? 0;
+  document.getElementById('lowStock').textContent = data.lowStock ?? 0;
+  document.getElementById('expiringSoon').textContent = data.expiringSoon ?? 0;
+
+  const tbody = document.getElementById('searchTableBody');
+  tbody.innerHTML = '';
+  (data.searches7Days ?? []).forEach(row => {
+    const tr = document.createElement('tr');
+    const tdDay = document.createElement('td');
+    const tdCount = document.createElement('td');
+    tdDay.textContent = row.day;
+    tdCount.textContent = row.count;
+    tdCount.className = 'text-end';
+    tr.appendChild(tdDay);
+    tr.appendChild(tdCount);
+    tbody.appendChild(tr);
+  });
+
+  const labels = (data.searches7Days ?? []).map(d => d.day);
+  const values = (data.searches7Days ?? []).map(d => d.count);
+
+  if (chartRef) chartRef.destroy();
+  const ctx = document.getElementById('searchChart').getContext('2d');
+  chartRef = new Chart(ctx, {
+    type: 'line',
+    data: {
+      labels,
+      datasets: [{
+        label: 'Searches',
+        data: values,
+        tension: 0.3,
+        borderColor: '#0d6efd',
+        backgroundColor: 'rgba(13,110,253,0.15)',
+        pointRadius: 3,
+        pointHoverRadius: 6
+      }]
+    },
+    options: {
+      responsive: true,
+      plugins: {
+        legend: { display: false }
+      },
+      scales: {
+        y: { beginAtZero: true, ticks: { precision: 0 } }
+      }
+    }
+  });
+}
+
+async function load() {
+  const banner = document.getElementById('errorBanner');
+  let usedFallback = false;
+
+  try {
+    const data = await fetchMetrics();
+    usedFallback = JSON.stringify(data) === JSON.stringify(DEFAULT_METRICS);
+    renderMetrics(data);
+    banner.classList.toggle('d-none', true);
+    if (usedFallback) {
+      banner.textContent = 'Loaded fallback sample metrics. Place metrics.php or metrics.json next to this page to use live data.';
+      banner.classList.toggle('d-none', false);
+    }
+  } catch (err) {
+    banner.textContent = 'Failed to load metrics.';
+    banner.classList.toggle('d-none', false);
+  }
+}
+
+document.getElementById('reloadBtn').addEventListener('click', load);
+load();
+</script>
+</body>
+</html>
