@@ -112,9 +112,64 @@ if (!empty($query)) {
             min-height: 44px; /* Minimum touch target size */
             min-width: 44px;
         }
+        
+        /* Location permission modal */
+        .location-modal {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(0,0,0,0.5);
+            z-index: 9999;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+        }
+        
+        .location-modal-content {
+            background: white;
+            border-radius: 10px;
+            padding: 30px;
+            max-width: 500px;
+            box-shadow: 0 5px 30px rgba(0,0,0,0.3);
+        }
     </style>
 </head>
 <body>
+    <!-- Location Permission Modal -->
+    <div id="locationModal" class="location-modal" style="display: none;">
+        <div class="location-modal-content">
+            <div class="text-center mb-4">
+                <i class="fas fa-map-marker-alt fa-3x text-primary mb-3"></i>
+                <h4 class="mb-3">Enable Location Services</h4>
+                <p class="mb-4">To show routes from your location to pharmacies, please allow location access in your browser.</p>
+                
+                <div class="alert alert-info mb-4 text-start">
+                    <strong>How to enable:</strong>
+                    <ol class="mb-0 mt-2">
+                        <li>Click <strong>"Allow"</strong> when your browser asks</li>
+                        <li>If blocked, check browser address bar for location icon</li>
+                        <li>Or click <strong>"Use Default Location"</strong> below</li>
+                    </ol>
+                </div>
+                
+                <div class="d-flex gap-3 justify-content-center">
+                    <button id="tryLocationAgain" class="btn btn-primary">
+                        <i class="fas fa-location-arrow"></i> Try Again
+                    </button>
+                    <button id="useDefaultModal" class="btn btn-secondary">
+                        <i class="fas fa-school"></i> Use Default Location
+                    </button>
+                    <button id="closeModal" class="btn btn-outline-secondary">
+                        <i class="fas fa-times"></i> Skip
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <!-- Navigation -->
     <nav class="navbar navbar-expand-lg navbar-dark bg-dark">
         <div class="container">
@@ -143,7 +198,6 @@ if (!empty($query)) {
                                 <i class="fas fa-sign-in-alt"></i> Login
                             </a>
                         </li>
-                        <!-- Registration link removed as public registration is disabled -->
                     <?php endif; ?>
                 </ul>
             </div>
@@ -310,9 +364,16 @@ if (!empty($query)) {
                             <button id="useDefault" class="btn btn-secondary">
                                 <i class="fas fa-school"></i> Use Default Location (J.H. Cerilles)
                             </button>
+                            <button id="enableHTTPSInfo" class="btn btn-info">
+                                <i class="fas fa-lock"></i> Why Location Might Not Work?
+                            </button>
                         </div>
                         <div class="alert alert-info mt-3 mb-0">
-                            <i class="fas fa-info-circle"></i> Click on pharmacy cards and then "Show Route" to see directions.
+                            <i class="fas fa-info-circle"></i> 
+                            <strong>Location Tips:</strong> 
+                            Click "Allow" when browser asks. If blocked, check address bar for location icon (🔒 or 🚫).
+                            <br>
+                            <small>For best results, use Chrome/Firefox and ensure location services are enabled on your device.</small>
                         </div>
                     </div>
                 </div>
@@ -322,227 +383,212 @@ if (!empty($query)) {
 
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/js/bootstrap.bundle.min.js"></script>
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-    <script src="js/custom.js"></script>
     <script>
         // Default location: J.H. Cerilles State Colleges, Balangasan
         const defaultLat = 7.82511;
         const defaultLng = 123.43115;
         
-        // Initialize map
-        const map = L.map('map').setView([defaultLat, defaultLng], 13);
-        
-        // Add OpenStreetMap tiles
-        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-            attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
-        }).addTo(map);
-        
-        // Pharmacy markers
-        const pharmacies = <?php echo json_encode($pharmacies); ?>;
-        const markers = [];
+        // Global variables
+        let map;
         let userMarker = null;
         let routeLine = null;
+        let userLocation = { lat: defaultLat, lng: defaultLng };
+        let locationPermissionGranted = false;
         
-        // Add pharmacy markers to map with custom icons
-        pharmacies.forEach(pharmacy => {
-            const pharmacyIcon = L.divIcon({
-                className: 'pharmacy-marker',
-                html: '<i class="fas fa-clinic-medical"></i>',
-                iconSize: [24, 24],
-                iconAnchor: [12, 12]
+        // Initialize map
+        function initMap() {
+            map = L.map('map').setView([defaultLat, defaultLng], 13);
+            
+            // Add OpenStreetMap tiles
+            L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+                attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+            }).addTo(map);
+            
+            // Pharmacy markers
+            const pharmacies = <?php echo json_encode($pharmacies); ?>;
+            
+            // Add pharmacy markers to map with custom icons
+            pharmacies.forEach(pharmacy => {
+                const pharmacyIcon = L.divIcon({
+                    className: 'pharmacy-marker',
+                    html: '<i class="fas fa-clinic-medical"></i>',
+                    iconSize: [24, 24],
+                    iconAnchor: [12, 12]
+                });
+                
+                const marker = L.marker([pharmacy.lat, pharmacy.lng], { icon: pharmacyIcon }).addTo(map)
+                    .bindPopup(`<b>${pharmacy.name}</b><br>${pharmacy.address}<br>Contact: ${pharmacy.contact}<br><button class='btn btn-sm btn-primary show-route-inline' data-lat='${pharmacy.lat}' data-lng='${pharmacy.lng}' data-name='${pharmacy.name}'>Show Route</button>`);
             });
             
-            const marker = L.marker([pharmacy.lat, pharmacy.lng], { icon: pharmacyIcon }).addTo(map)
-                .bindPopup(`<b>${pharmacy.name}</b><br>${pharmacy.address}<br>Contact: ${pharmacy.contact}<br><button class='btn btn-sm btn-primary show-route-inline' data-lat='${pharmacy.lat}' data-lng='${pharmacy.lng}' data-name='${pharmacy.name}'>Show Route</button>`);
-            
-            markers.push({
-                id: pharmacy.id,
-                marker: marker,
-                lat: pharmacy.lat,
-                lng: pharmacy.lng,
-                name: pharmacy.name
+            // Add event listeners for inline route buttons in popups
+            map.on('popupopen', function(e) {
+                const popup = e.popup;
+                const container = popup._container;
+                
+                // Add event listener for inline route button
+                const inlineRouteButton = container.querySelector('.show-route-inline');
+                if (inlineRouteButton) {
+                    inlineRouteButton.addEventListener('click', function() {
+                        const lat = parseFloat(this.dataset.lat);
+                        const lng = parseFloat(this.dataset.lng);
+                        const name = this.dataset.name;
+                        
+                        showRouteToPharmacy(lat, lng, name);
+                    });
+                }
             });
+        }
+        
+        // Initialize map on page load
+        document.addEventListener('DOMContentLoaded', function() {
+            initMap();
+            
+            // Set up event listeners
+            setupEventListeners();
+            
+            // Try to get location on page load (with user permission)
+            setTimeout(() => {
+                checkLocationSupport();
+            }, 1000);
         });
         
-        // Add event listeners for inline route buttons in popups
-        map.on('popupopen', function(e) {
-            const popup = e.popup;
-            const container = popup._container;
-            
-            // Add event listener for inline route button
-            const inlineRouteButton = container.querySelector('.show-route-inline');
-            if (inlineRouteButton) {
-                inlineRouteButton.addEventListener('click', function() {
+        // Show route function
+        function setupEventListeners() {
+            // Show route buttons
+            document.querySelectorAll('.show-route').forEach(button => {
+                button.addEventListener('click', function() {
                     const lat = parseFloat(this.dataset.lat);
                     const lng = parseFloat(this.dataset.lng);
                     const name = this.dataset.name;
                     
                     showRouteToPharmacy(lat, lng, name);
                 });
-            }
-        });
-        
-        // Show route function
-        document.querySelectorAll('.show-route').forEach(button => {
-            button.addEventListener('click', function() {
-                const lat = parseFloat(this.dataset.lat);
-                const lng = parseFloat(this.dataset.lng);
-                const name = this.dataset.name;
-                
-                showRouteToPharmacy(lat, lng, name);
             });
-        });
-        
-        // Function to show route to a pharmacy using OSRM
-        function showRouteToPharmacy(lat, lng, name) {
-            // Get user location or use default
-            getUserLocation()
-                .then(userLocation => {
-                    // Remove previous route line if exists
-                    if (routeLine) {
-                        map.removeLayer(routeLine);
-                    }
-                    
-                    // Use OSRM routing service to get road route
-                    const url = `https://router.project-osrm.org/route/v1/driving/${userLocation.lng},${userLocation.lat};${lng},${lat}?overview=full&geometries=geojson`;
-                    
-                    fetch(url)
-                        .then(response => response.json())
-                        .then(data => {
-                            if (data.routes && data.routes.length > 0) {
-                                const route = data.routes[0];
-                                const coordinates = route.geometry.coordinates.map(coord => [coord[1], coord[0]]);
-                                
-                                // Draw route line
-                                routeLine = L.polyline(coordinates, {
-                                    color: '#0d6efd',
-                                    weight: 6,
-                                    opacity: 0.8
-                                }).addTo(map);
-                                
-                                // Fit map to show the route
-                                const bounds = L.latLngBounds(coordinates);
-                                map.fitBounds(bounds, { padding: [50, 50] });
-                                
-                                // Show route information in notifications panel
-                                const distance = (route.distance / 1000).toFixed(2);
-                                const duration = Math.round(route.duration / 60);
-                                showRouteNotification(`Route to ${name} displayed on map. Distance: ${distance} km, Estimated time: ${duration} minutes.`);
-                            } else {
-                                // Fallback to straight line if routing fails
-                                drawStraightLine(userLocation, lat, lng, name);
-                            }
-                        })
-                        .catch(error => {
-                            console.error('Error getting route:', error);
-                            // Fallback to straight line if routing fails
-                            drawStraightLine(userLocation, lat, lng, name);
-                        });
-                })
-                .catch(error => {
-                    console.error('Error getting location:', error);
-                    // Use default location
-                    const userLocation = { lat: defaultLat, lng: defaultLng };
-                    
-                    // Remove previous route line if exists
-                    if (routeLine) {
-                        map.removeLayer(routeLine);
-                    }
-                    
-                    // Use OSRM routing service to get road route
-                    const url = `https://router.project-osrm.org/route/v1/driving/${userLocation.lng},${userLocation.lat};${lng},${lat}?overview=full&geometries=geojson`;
-                    
-                    fetch(url)
-                        .then(response => response.json())
-                        .then(data => {
-                            if (data.routes && data.routes.length > 0) {
-                                const route = data.routes[0];
-                                const coordinates = route.geometry.coordinates.map(coord => [coord[1], coord[0]]);
-                                
-                                // Draw route line
-                                routeLine = L.polyline(coordinates, {
-                                    color: '#0d6efd',
-                                    weight: 6,
-                                    opacity: 0.8
-                                }).addTo(map);
-                                
-                                // Fit map to show the route
-                                const bounds = L.latLngBounds(coordinates);
-                                map.fitBounds(bounds, { padding: [50, 50] });
-                                
-                                // Show route information in notifications panel
-                                const distance = (route.distance / 1000).toFixed(2);
-                                const duration = Math.round(route.duration / 60);
-                                showRouteNotification(`Using default location. Route to ${name} displayed on map. Distance: ${distance} km, Estimated time: ${duration} minutes.`);
-                            } else {
-                                // Fallback to straight line if routing fails
-                                drawStraightLine(userLocation, lat, lng, name);
-                            }
-                        })
-                        .catch(error => {
-                            console.error('Error getting route:', error);
-                            // Fallback to straight line if routing fails
-                            drawStraightLine(userLocation, lat, lng, name);
-                        });
-                });
-        }
-        
-        // Fallback function to draw straight line
-        function drawStraightLine(userLocation, lat, lng, name) {
-            // Remove previous route line if exists
-            if (routeLine) {
-                map.removeLayer(routeLine);
-            }
             
-            // Draw route line
-            routeLine = L.polyline([
-                [userLocation.lat, userLocation.lng],
-                [lat, lng]
-            ], {
-                color: '#0d6efd',
-                weight: 4,
-                opacity: 0.7
-            }).addTo(map);
-            
-            // Fit map to show both points
-            const bounds = L.latLngBounds([
-                [userLocation.lat, userLocation.lng],
-                [lat, lng]
-            ]);
-            map.fitBounds(bounds, { padding: [50, 50] });
-            
-            showRouteNotification(`Using straight line route to ${name}. For road route, please check your internet connection.`);
-        }
-        
-        // Use my location button
-        document.getElementById('useLocation').addEventListener('click', function() {
-            getUserLocation()
-                .then(location => {
-                    if (userMarker) {
-                        map.removeLayer(userMarker);
-                    }
-                    
-                    const userIcon = L.divIcon({
-                        className: 'user-location-marker',
-                        html: '<i class="fas fa-user"></i>',
-                        iconSize: [24, 24],
-                        iconAnchor: [12, 12]
+            // Use my location button
+            document.getElementById('useLocation').addEventListener('click', function() {
+                getUserLocation(true) // true = show modal if needed
+                    .then(location => {
+                        updateUserMarker(location, 'Your Location');
+                        map.setView([location.lat, location.lng], 14);
+                        showNotification('Your location has been set on the map');
+                    })
+                    .catch(error => {
+                        showLocationModal();
                     });
-                    
-                    userMarker = L.marker([location.lat, location.lng], { icon: userIcon }).addTo(map)
-                    .bindPopup('Your Location')
-                    .openPopup();
-                    
-                    map.setView([location.lat, location.lng], 14);
-                    showRouteNotification('Your location has been set on the map');
-                })
-                .catch(error => {
-                    console.error('Error getting location:', error);
-                    showRouteNotification('Unable to get your location. Please ensure location services are enabled.');
+            });
+            
+            // Use default location button
+            document.getElementById('useDefault').addEventListener('click', function() {
+                userLocation = { lat: defaultLat, lng: defaultLng };
+                updateUserMarker(userLocation, 'Default Location: J.H. Cerilles State Colleges');
+                map.setView([defaultLat, defaultLng], 14);
+                showNotification('Default location has been set on the map');
+            });
+            
+            // Modal buttons
+            document.getElementById('tryLocationAgain')?.addEventListener('click', function() {
+                document.getElementById('locationModal').style.display = 'none';
+                getUserLocation(true)
+                    .then(location => {
+                        updateUserMarker(location, 'Your Location');
+                        map.setView([location.lat, location.lng], 14);
+                        showNotification('Location access granted!');
+                    });
+            });
+            
+            document.getElementById('useDefaultModal')?.addEventListener('click', function() {
+                document.getElementById('locationModal').style.display = 'none';
+                userLocation = { lat: defaultLat, lng: defaultLng };
+                updateUserMarker(userLocation, 'Default Location: J.H. Cerilles State Colleges');
+                map.setView([defaultLat, defaultLng], 14);
+                showNotification('Using default location');
+            });
+            
+            document.getElementById('closeModal')?.addEventListener('click', function() {
+                document.getElementById('locationModal').style.display = 'none';
+            });
+            
+            // HTTPS info button
+            document.getElementById('enableHTTPSInfo')?.addEventListener('click', function() {
+                alert('Why location might not work:\n\n1. Your site uses HTTP (not HTTPS) - Browsers restrict geolocation on non-secure sites\n2. User denied permission - They must click "Allow"\n3. Browser settings - Location might be disabled\n4. No GPS signal - For mobile devices\n\nTip: For production, enable HTTPS on InfinityFree for better location support.');
+            });
+            
+            // Close notifications panel
+            document.getElementById('closeNotifications')?.addEventListener('click', function() {
+                document.querySelector('.notification-panel').style.display = 'none';
+            });
+            
+            // Details buttons
+            document.querySelectorAll('.show-details').forEach(button => {
+                button.addEventListener('click', function() {
+                    const name = this.dataset.name;
+                    const address = this.dataset.address;
+                    showNotification(`Pharmacy: ${name}<br>Address: ${address}`);
                 });
-        });
+            });
+        }
         
-        // Use default location button
-        document.getElementById('useDefault').addEventListener('click', function() {
+        // Function to get user location with better error handling
+        function getUserLocation(showModalOnError = false) {
+            return new Promise((resolve, reject) => {
+                if (!navigator.geolocation) {
+                    if (showModalOnError) showLocationModal();
+                    reject(new Error('Geolocation not supported'));
+                    return;
+                }
+                
+                navigator.geolocation.getCurrentPosition(
+                    position => {
+                        userLocation = {
+                            lat: position.coords.latitude,
+                            lng: position.coords.longitude
+                        };
+                        locationPermissionGranted = true;
+                        resolve(userLocation);
+                    },
+                    error => {
+                        locationPermissionGranted = false;
+                        
+                        // Show helpful error messages
+                        let errorMessage = 'Location access denied. ';
+                        switch(error.code) {
+                            case error.PERMISSION_DENIED:
+                                errorMessage += 'Please allow location access in your browser settings.';
+                                break;
+                            case error.POSITION_UNAVAILABLE:
+                                errorMessage += 'Location information unavailable.';
+                                break;
+                            case error.TIMEOUT:
+                                errorMessage += 'Location request timed out.';
+                                break;
+                            default:
+                                errorMessage += 'Unknown error.';
+                        }
+                        
+                        console.log('Geolocation error:', errorMessage);
+                        
+                        if (showModalOnError) {
+                            showLocationModal();
+                        }
+                        reject(new Error(errorMessage));
+                    },
+                    {
+                        enableHighAccuracy: true,
+                        timeout: 15000,
+                        maximumAge: 60000
+                    }
+                );
+            });
+        }
+        
+        // Show location permission modal
+        function showLocationModal() {
+            document.getElementById('locationModal').style.display = 'flex';
+        }
+        
+        // Update user marker on map
+        function updateUserMarker(location, popupText) {
             if (userMarker) {
                 map.removeLayer(userMarker);
             }
@@ -554,106 +600,139 @@ if (!empty($query)) {
                 iconAnchor: [12, 12]
             });
             
-            userMarker = L.marker([defaultLat, defaultLng], { icon: userIcon }).addTo(map)
-            .bindPopup('Default Location: J.H. Cerilles State Colleges')
-            .openPopup();
-            
-            map.setView([defaultLat, defaultLng], 14);
-            showRouteNotification('Default location has been set on the map');
-        });
-        
-        // Function to get user location
-        function getUserLocation() {
-            return new Promise((resolve, reject) => {
-                if (navigator.geolocation) {
-                    navigator.geolocation.getCurrentPosition(
-                        position => {
-                            resolve({
-                                lat: position.coords.latitude,
-                                lng: position.coords.longitude
-                            });
-                        },
-                        error => {
-                            reject(error);
-                        },
-                        {
-                            enableHighAccuracy: true,
-                            timeout: 10000,
-                            maximumAge: 300000
-                        }
-                    );
-                } else {
-                    reject(new Error('Geolocation is not supported by this browser.'));
-                }
-            });
+            userMarker = L.marker([location.lat, location.lng], { icon: userIcon }).addTo(map)
+                .bindPopup(popupText);
         }
         
-        // Set default location on map load
-        const userIcon = L.divIcon({
-            className: 'user-location-marker',
-            html: '<i class="fas fa-user"></i>',
-            iconSize: [24, 24],
-            iconAnchor: [12, 12]
-        });
+        // Function to show route to a pharmacy
+        function showRouteToPharmacy(lat, lng, name) {
+            // Check if we have user location
+            if (!locationPermissionGranted) {
+                // Ask for location first
+                getUserLocation(true)
+                    .then(location => {
+                        calculateAndShowRoute(location, lat, lng, name);
+                    })
+                    .catch(error => {
+                        // Use default location
+                        calculateAndShowRoute(userLocation, lat, lng, name, true);
+                    });
+            } else {
+                calculateAndShowRoute(userLocation, lat, lng, name);
+            }
+        }
         
-        userMarker = L.marker([defaultLat, defaultLng], { icon: userIcon }).addTo(map)
-        .bindPopup('Default Location: J.H. Cerilles State Colleges');
+        // Calculate and display route
+        function calculateAndShowRoute(startLocation, endLat, endLng, name, usingDefault = false) {
+            // Remove previous route line if exists
+            if (routeLine) {
+                map.removeLayer(routeLine);
+            }
+            
+            const messagePrefix = usingDefault ? 'Using default location. ' : '';
+            
+            // Try OSRM routing first
+            const url = `https://router.project-osrm.org/route/v1/driving/${startLocation.lng},${startLocation.lat};${endLng},${endLat}?overview=full&geometries=geojson`;
+            
+            fetch(url)
+                .then(response => response.json())
+                .then(data => {
+                    if (data.routes && data.routes.length > 0) {
+                        const route = data.routes[0];
+                        const coordinates = route.geometry.coordinates.map(coord => [coord[1], coord[0]]);
+                        
+                        // Draw route line
+                        routeLine = L.polyline(coordinates, {
+                            color: '#0d6efd',
+                            weight: 6,
+                            opacity: 0.8
+                        }).addTo(map);
+                        
+                        // Fit map to show the route
+                        const bounds = L.latLngBounds(coordinates);
+                        map.fitBounds(bounds, { padding: [50, 50] });
+                        
+                        // Show route information
+                        const distance = (route.distance / 1000).toFixed(2);
+                        const duration = Math.round(route.duration / 60);
+                        showNotification(`${messagePrefix}Route to ${name} displayed. Distance: ${distance} km, Time: ${duration} min.`);
+                    } else {
+                        // Fallback to straight line
+                        drawStraightLine(startLocation, endLat, endLng, name, messagePrefix);
+                    }
+                })
+                .catch(error => {
+                    // Fallback to straight line
+                    drawStraightLine(startLocation, endLat, endLng, name, messagePrefix);
+                });
+        }
         
-        // Show route notification in the notification panel
-        function showRouteNotification(message) {
-            // Check if notification panel exists
+        // Fallback straight line
+        function drawStraightLine(startLocation, endLat, endLng, name, messagePrefix) {
+            routeLine = L.polyline([
+                [startLocation.lat, startLocation.lng],
+                [endLat, endLng]
+            ], {
+                color: '#0d6efd',
+                weight: 4,
+                opacity: 0.7,
+                dashArray: '10, 10'
+            }).addTo(map);
+            
+            const bounds = L.latLngBounds([
+                [startLocation.lat, startLocation.lng],
+                [endLat, endLng]
+            ]);
+            map.fitBounds(bounds, { padding: [50, 50] });
+            
+            showNotification(`${messagePrefix}Straight line to ${name} (road routing unavailable).`);
+        }
+        
+        // Check browser geolocation support
+        function checkLocationSupport() {
+            if (!navigator.geolocation) {
+                showNotification('Your browser doesn\'t support location services. Using default location.');
+                return;
+            }
+            
+            // Try to get location silently (won't show prompt)
+            navigator.geolocation.getCurrentPosition(
+                () => {
+                    // Permission already granted
+                    locationPermissionGranted = true;
+                    getUserLocation(false).then(location => {
+                        updateUserMarker(location, 'Your Location (auto-detected)');
+                        showNotification('Location detected automatically');
+                    });
+                },
+                () => {
+                    // Permission not granted, that's ok
+                },
+                { maximumAge: 60000, timeout: 5000 }
+            );
+        }
+        
+        // Show notification
+        function showNotification(message) {
             const notificationPanel = document.querySelector('.notification-panel');
             if (notificationPanel) {
-                // Add to existing notification panel
                 const cardBody = notificationPanel.querySelector('.card-body');
                 if (cardBody) {
                     const alertDiv = document.createElement('div');
                     alertDiv.className = 'alert alert-info alert-dismissible fade show';
                     alertDiv.role = 'alert';
                     alertDiv.innerHTML = `
-                        <i class="fas fa-route"></i> ${message}
+                        <i class="fas fa-info-circle"></i> ${message}
                         <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
                     `;
-                    // Add to the top of the notifications
                     cardBody.insertBefore(alertDiv, cardBody.firstChild);
-                    
-                    // Auto-scroll to the top of notifications
                     cardBody.scrollTop = 0;
                 }
-            } else {
-                // If no notification panel exists, show an alert as fallback
-                alert(message);
             }
         }
         
-        // Close notifications panel
-        document.getElementById('closeNotifications')?.addEventListener('click', function() {
-            document.querySelector('.notification-panel').style.display = 'none';
-        });
-        
-        // Add click event to pharmacy cards to show details
-        document.querySelectorAll('.pharmacy-card').forEach(card => {
-            card.addEventListener('click', function(e) {
-                // Only trigger if not clicking on a button
-                if (!e.target.closest('button')) {
-                    const name = this.querySelector('.card-title').textContent;
-                    const address = this.querySelector('.card-text').textContent.split('\n')[0];
-                    showRouteNotification(`Selected pharmacy: ${name}. Click "Show Route" to see directions.`);
-                }
-            });
-        });
-        
-        // Add click event to details buttons
-        document.querySelectorAll('.show-details').forEach(button => {
-            button.addEventListener('click', function() {
-                const name = this.dataset.name;
-                const address = this.dataset.address;
-                const lat = this.dataset.lat;
-                const lng = this.dataset.lng;
-                
-                showRouteNotification(`Pharmacy: ${name}<br>Address: ${address}<br>Coordinates: ${lat}, ${lng}`);
-            });
-        });
+        // Set initial default location marker
+        updateUserMarker({ lat: defaultLat, lng: defaultLng }, 'Default Location: J.H. Cerilles State Colleges');
     </script>
 </body>
 </html>
