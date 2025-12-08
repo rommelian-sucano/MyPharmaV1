@@ -1,8 +1,8 @@
 <?php
-$servername = "localhost";
-$username = "root";
+$servername = "sql113.infinityfree.com";
+$username = "if0_40619035";
 $password = "";
-$dbname = "mypharma_v1";
+$dbname = "if0_40619035_mypharmav1";
 
 // Create connection
 $conn = new mysqli($servername, $username, $password, $dbname);
