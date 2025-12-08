@@ -1,6 +1,5 @@
 -- ===========================================
--- ADD IN-DEMAND MEDICINES FOR PAGADIAN CITY
--- AND STOCK THEM IN ALL PHARMACIES
+
 -- ===========================================
 
 -- Start transaction for data consistency
