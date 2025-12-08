@@ -1,5 +1,19 @@
 <?php
+require_once 'auth.php';
+
+// After successful login:
+$_SESSION['user_id'] = $user['id'];
+$_SESSION['role'] = $user['role'];
+$_SESSION['last_activity'] = time(); // Important for timeout
+
+// Start session with secure settings
 session_start();
+
+// Set session cookie to expire on browser close
+// This is the most important setting for browser close logout
+ini_set('session.cookie_lifetime', 0);
+ini_set('session.cookie_httponly', 1); // Prevent JavaScript access to session cookie
+ini_set('session.use_only_cookies', 1); // Use only cookies for sessions
 
 // Enable error reporting for debugging (remove in production)
 error_reporting(E_ALL);
@@ -17,8 +31,20 @@ if ($conn->connect_error) {
     die("Database connection failed: " . $conn->connect_error);
 }
 
+// Check if user should be logged out due to session timeout
+if (isset($_SESSION['last_activity']) && (time() - $_SESSION['last_activity'] > 1800)) {
+    // Session expired (30 minutes)
+    session_unset();
+    session_destroy();
+    header("Location: login.php?error=session_expired");
+    exit();
+}
+
 // Redirect if already logged in
 if (isset($_SESSION['user_id'])) {
+    // Update last activity time
+    $_SESSION['last_activity'] = time();
+    
     if ($_SESSION['role'] == 'admin') {
         header("Location: admin_dashboard.php");
         exit();
@@ -69,6 +95,11 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
                             $_SESSION['name'] = $user['name'];
                             $_SESSION['email'] = $user['email'];
                             $_SESSION['role'] = $user['role'];
+                            $_SESSION['last_activity'] = time(); // IMPORTANT: Set activity timestamp
+                            $_SESSION['session_start'] = time(); // Track session start time
+                            
+                            // Regenerate session ID for security (prevent session fixation)
+                            session_regenerate_id(true);
                             
                             // Redirect based on role
                             if ($user['role'] == 'admin') {
@@ -146,6 +177,13 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
                     <?php if (!empty($error)): ?>
                         <div class="alert alert-danger alert-dismissible fade show" role="alert">
                             <strong>Error:</strong> <?php echo htmlspecialchars($error); ?>
+                            <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+                        </div>
+                    <?php endif; ?>
+                    
+                    <?php if (isset($_GET['error']) && $_GET['error'] == 'session_expired'): ?>
+                        <div class="alert alert-warning alert-dismissible fade show" role="alert">
+                            <strong>Session Expired:</strong> Your session has expired due to inactivity. Please login again.
                             <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
                         </div>
                     <?php endif; ?>
