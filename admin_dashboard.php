@@ -6,9 +6,9 @@ include 'auth.php';
 // Check if user is logged in and is admin
 requireRole(['admin']);
 
-// Get pending users count - FIX for missing variable
+// Get pending users count
 $pending_users_count = 0;
-$stmt = $conn->prepare("SELECT COUNT(*) as count FROM users WHERE status = 'pending'");
+$stmt = $conn->prepare("SELECT COUNT(*) as count FROM users WHERE role = 'pending'");
 if ($stmt) {
     $stmt->execute();
     $result = $stmt->get_result();
@@ -56,7 +56,7 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
     if (isset($_POST['approve_user'])) {
         $user_id = $_POST['user_id'];
         
-        $stmt = $conn->prepare("UPDATE users SET status = 'approved', role = 'staff' WHERE id = ? AND status = 'pending'");
+        $stmt = $conn->prepare("UPDATE users SET role = 'staff' WHERE id = ? AND role = 'pending'");
         $stmt->bind_param("i", $user_id);
         if ($stmt->execute()) {
             if ($stmt->affected_rows > 0) {
@@ -74,7 +74,7 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
     if (isset($_POST['reject_user'])) {
         $user_id = $_POST['user_id'];
         
-        $stmt = $conn->prepare("DELETE FROM users WHERE id = ? AND status = 'pending'");
+        $stmt = $conn->prepare("DELETE FROM users WHERE id = ? AND role = 'pending'");
         $stmt->bind_param("i", $user_id);
         if ($stmt->execute()) {
             if ($stmt->affected_rows > 0) {
@@ -110,17 +110,18 @@ while ($row = $verified_pharmacies_result->fetch_assoc()) {
 $stmt->close();
 
 // Get all users
-$stmt = $conn->prepare("SELECT id, name, email, role, status FROM users ORDER BY role, name");
+$stmt = $conn->prepare("SELECT id, name, email, role FROM users ORDER BY role, name");
 $stmt->execute();
 $users_result = $stmt->get_result();
 $users = [];
 while ($row = $users_result->fetch_assoc()) {
+    $row['status'] = ($row['role'] == 'pending') ? 'pending' : 'approved';
     $users[] = $row;
 }
 $stmt->close();
 
 // Get pending user registrations
-$stmt = $conn->prepare("SELECT id, name, email, created_at FROM users WHERE status = 'pending' ORDER BY created_at DESC");
+$stmt = $conn->prepare("SELECT id, name, email, created_at FROM users WHERE role = 'pending' ORDER BY created_at DESC");
 $stmt->execute();
 $pending_users_result = $stmt->get_result();
 $pending_users = [];
@@ -302,7 +303,7 @@ try {
                     <div class="col-md-3">
                         <div class="card stat-card bg-success text-white">
                             <div class="card-body text-center">
-                                <h3><?php echo count(array_filter($users, function($user) { return $user['role'] === 'staff' && $user['status'] === 'approved'; })); ?></h3>
+                                <h3><?php echo count(array_filter($users, function($user) { return $user['role'] === 'staff'; })); ?></h3>
                                 <p class="mb-0">Active Staff</p>
                             </div>
                         </div>
@@ -498,17 +499,17 @@ try {
                                                             <span class="badge bg-danger">Admin</span>
                                                         <?php elseif ($user['role'] === 'staff'): ?>
                                                             <span class="badge bg-success">Staff</span>
+                                                        <?php elseif ($user['role'] === 'pending'): ?>
+                                                            <span class="badge bg-warning">Pending</span>
                                                         <?php else: ?>
                                                             <span class="badge bg-primary"><?php echo ucfirst($user['role']); ?></span>
                                                         <?php endif; ?>
                                                     </td>
                                                     <td>
-                                                        <?php if ($user['status'] === 'approved'): ?>
-                                                            <span class="badge bg-success">Approved</span>
-                                                        <?php elseif ($user['status'] === 'pending'): ?>
+                                                        <?php if ($user['role'] === 'pending'): ?>
                                                             <span class="badge bg-warning">Pending</span>
                                                         <?php else: ?>
-                                                            <span class="badge bg-secondary"><?php echo ucfirst($user['status']); ?></span>
+                                                            <span class="badge bg-success">Approved</span>
                                                         <?php endif; ?>
                                                     </td>
                                                 </tr>
@@ -520,198 +521,7 @@ try {
                         </div>
                     </div>
                 </div>
-<!-- Pharmacy Users Relationship Section -->
-<div class="row" id="relationships">
-    <div class="col-12">
-        <div class="card mb-4">
-            <div class="card-header bg-info text-white">
-                <h5 class="mb-0">
-                    <i class="fas fa-link me-2"></i> Pharmacy - User Relationships
-                </h5>
-            </div>
-            <div class="card-body">
-                <?php
-                // Get pharmacy-user relationships
-                $relationship_stmt = $conn->prepare("
-                    SELECT u.id as user_id, u.name as user_name, u.email, u.role as user_role,
-                           p.id as pharmacy_id, p.name as pharmacy_name, p.address, p.verified, 
-                           up.user_role as pharmacy_user_role
-                    FROM user_pharmacies up 
-                    JOIN users u ON up.user_id = u.id 
-                    JOIN pharmacies p ON up.pharmacy_id = p.id 
-                    ORDER BY p.name, u.name
-                ");
-                $relationship_stmt->execute();
-                $relationships_result = $relationship_stmt->get_result();
-                $relationships = [];
-                while ($row = $relationships_result->fetch_assoc()) {
-                    $relationships[] = $row;
-                }
-                $relationship_stmt->close();
 
-                // Get users with pharmacy data in old system
-                $old_system_stmt = $conn->prepare("
-                    SELECT id, name, email, role, 
-                           pharmacy_name, pharmacy_address, pharmacy_contact
-                    FROM users 
-                    WHERE pharmacy_name IS NOT NULL AND pharmacy_name != ''
-                    AND id NOT IN (SELECT user_id FROM user_pharmacies)
-                    ORDER BY name
-                ");
-                $old_system_stmt->execute();
-                $old_system_result = $old_system_stmt->get_result();
-                $old_system_users = [];
-                while ($row = $old_system_result->fetch_assoc()) {
-                    $old_system_users[] = $row;
-                }
-                $old_system_stmt->close();
-                ?>
-
-                <!-- New System Relationships -->
-                <h6 class="mb-3 text-success">
-                    <i class="fas fa-sync me-2"></i> New System Relationships
-                </h6>
-                <?php if (count($relationships) === 0): ?>
-                    <div class="alert alert-info">
-                        <i class="fas fa-info-circle"></i> No pharmacy-user relationships in new system.
-                    </div>
-                <?php else: ?>
-                    <div class="table-responsive">
-                        <table class="table table-striped">
-                            <thead>
-                                <tr>
-                                    <th>User</th>
-                                    <th>Email</th>
-                                    <th>System Role</th>
-                                    <th>Pharmacy</th>
-                                    <th>Pharmacy Role</th>
-                                    <th>Pharmacy Status</th>
-                                    <th>Actions</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                <?php foreach ($relationships as $rel): ?>
-                                    <tr>
-                                        <td>
-                                            <?php echo e($rel['user_name']); ?>
-                                            <br><small class="text-muted">ID: <?php echo $rel['user_id']; ?></small>
-                                        </td>
-                                        <td><?php echo e($rel['email']); ?></td>
-                                        <td>
-                                            <span class="badge bg-<?php echo $rel['user_role'] == 'admin' ? 'danger' : ($rel['user_role'] == 'owner' ? 'primary' : 'success'); ?>">
-                                                <?php echo ucfirst($rel['user_role']); ?>
-                                            </span>
-                                        </td>
-                                        <td>
-                                            <?php echo e($rel['pharmacy_name']); ?>
-                                            <br><small class="text-muted"><?php echo e($rel['address']); ?></small>
-                                        </td>
-                                        <td>
-                                            <span class="badge bg-<?php echo $rel['pharmacy_user_role'] == 'owner' ? 'primary' : 'secondary'; ?>">
-                                                <?php echo ucfirst($rel['pharmacy_user_role']); ?>
-                                            </span>
-                                        </td>
-                                        <td>
-                                            <span class="badge bg-<?php echo $rel['verified'] ? 'success' : 'warning'; ?>">
-                                                <?php echo $rel['verified'] ? 'Verified' : 'Pending'; ?>
-                                            </span>
-                                        </td>
-                                        <td>
-                                            <div class="btn-group btn-group-sm">
-                                                <button class="btn btn-outline-primary" 
-                                                        onclick="viewRelationship(<?php echo $rel['user_id']; ?>, <?php echo $rel['pharmacy_id']; ?>)">
-                                                    <i class="fas fa-eye"></i>
-                                                </button>
-                                                <button class="btn btn-outline-warning" 
-                                                        onclick="editRelationship(<?php echo $rel['user_id']; ?>, <?php echo $rel['pharmacy_id']; ?>)">
-                                                    <i class="fas fa-edit"></i>
-                                                </button>
-                                            </div>
-                                        </td>
-                                    </tr>
-                                <?php endforeach; ?>
-                            </tbody>
-                        </table>
-                    </div>
-                <?php endif; ?>
-
-                <!-- Old System Users -->
-                <h6 class="mt-4 mb-3 text-warning">
-                    <i class="fas fa-database me-2"></i> Legacy System Users (Need Migration)
-                </h6>
-                <?php if (count($old_system_users) === 0): ?>
-                    <div class="alert alert-success">
-                        <i class="fas fa-check-circle"></i> All users are migrated to the new system.
-                    </div>
-                <?php else: ?>
-                    <div class="table-responsive">
-                        <table class="table table-striped">
-                            <thead>
-                                <tr>
-                                    <th>User</th>
-                                    <th>Email</th>
-                                    <th>Role</th>
-                                    <th>Pharmacy Name</th>
-                                    <th>Pharmacy Address</th>
-                                    <th>Actions</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                <?php foreach ($old_system_users as $user): ?>
-                                    <tr>
-                                        <td><?php echo e($user['name']); ?></td>
-                                        <td><?php echo e($user['email']); ?></td>
-                                        <td>
-                                            <span class="badge bg-<?php echo $user['role'] == 'admin' ? 'danger' : ($user['role'] == 'owner' ? 'primary' : 'success'); ?>">
-                                                <?php echo ucfirst($user['role']); ?>
-                                            </span>
-                                        </td>
-                                        <td><?php echo e($user['pharmacy_name']); ?></td>
-                                        <td><?php echo e($user['pharmacy_address']); ?></td>
-                                        <td>
-                                            <button class="btn btn-sm btn-success" 
-                                                    onclick="migrateUser(<?php echo $user['id']; ?>)">
-                                                <i class="fas fa-sync me-1"></i>Migrate
-                                            </button>
-                                        </td>
-                                    </tr>
-                                <?php endforeach; ?>
-                            </tbody>
-                        </table>
-                    </div>
-                <?php endif; ?>
-            </div>
-        </div>
-    </div>
-</div>
-
-<script>
-function viewRelationship(userId, pharmacyId) {
-    alert('View relationship: User ' + userId + ' - Pharmacy ' + pharmacyId);
-    // Implement view functionality
-}
-
-function editRelationship(userId, pharmacyId) {
-    alert('Edit relationship: User ' + userId + ' - Pharmacy ' + pharmacyId);
-    // Implement edit functionality
-}
-
-function migrateUser(userId) {
-    if (confirm('Migrate this user to the new system?')) {
-        // AJAX call to migrate user
-        fetch('migrate_user.php?user_id=' + userId)
-            .then(response => response.json())
-            .then(data => {
-                if (data.success) {
-                    alert('User migrated successfully!');
-                    location.reload();
-                } else {
-                    alert('Error migrating user: ' + data.error);
-                }
-            });
-    }
-}
-</script>
                 <!-- Notifications Section -->
                 <div class="row" id="notifications">
                     <div class="col-12">
