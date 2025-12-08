@@ -1,12 +1,50 @@
 <?php
-==========================================
+// ============================================
+// STAFF DASHBOARD - FIXED VERSION
+// ============================================
 
 // ENABLE ERROR REPORTING
 ini_set('display_errors', 1);
 ini_set('display_startup_errors', 1);
 error_reporting(E_ALL);
 
+// ============================================
+// SESSION SETTINGS FOR AUTO LOGOUT
+// ============================================
+// Set session cookie to expire when browser closes
+ini_set('session.cookie_lifetime', 0);
+ini_set('session.cookie_httponly', 1);
+ini_set('session.use_only_cookies', 1);
+
 session_start();
+
+// ============================================
+// SESSION TIMEOUT CHECK (30 minutes)
+// ============================================
+$timeout = 1800; // 30 minutes in seconds
+
+if (isset($_SESSION['last_activity'])) {
+    $session_life = time() - $_SESSION['last_activity'];
+    
+    // If session expired, destroy it and redirect to login
+    if ($session_life > $timeout) {
+        // Destroy session
+        session_unset();
+        session_destroy();
+        
+        // Clear session cookie
+        if (isset($_COOKIE[session_name()])) {
+            setcookie(session_name(), '', time() - 3600, '/');
+        }
+        
+        // Redirect to login with timeout message
+        header("Location: login.php?error=session_expired");
+        exit();
+    }
+}
+
+// Update last activity time
+$_SESSION['last_activity'] = time();
 
 // DEBUG HEADER
 echo "<!-- DEBUG MODE ACTIVE -->";
@@ -163,9 +201,27 @@ if (!file_exists($unauthorized_file)) {
             background: #f1f1f1;
             border-left: 4px solid #dc3545;
         }
+        .session-timer {
+            position: fixed;
+            bottom: 20px;
+            right: 20px;
+            background: rgba(0,0,0,0.8);
+            color: white;
+            padding: 10px 15px;
+            border-radius: 20px;
+            font-size: 14px;
+            z-index: 1000;
+            display: none;
+        }
     </style>
 </head>
 <body>
+    <!-- Session Timer (shows time until auto logout) -->
+    <div id="sessionTimer" class="session-timer">
+        <i class="fas fa-clock me-2"></i>
+        Session expires in: <span id="countdown">30:00</span>
+    </div>
+    
     <div class="container-fluid">
         <div class="row">
             <!-- Debug Panel -->
@@ -185,6 +241,8 @@ if (!file_exists($unauthorized_file)) {
                         <div>Name: <?php echo e($_SESSION['name'] ?? 'Not set'); ?></div>
                         <div>Role: <?php echo e($_SESSION['role'] ?? 'Not set'); ?></div>
                         <div>Email: <?php echo e($_SESSION['email'] ?? 'Not set'); ?></div>
+                        <div>Last Activity: <?php echo e(isset($_SESSION['last_activity']) ? date('H:i:s', $_SESSION['last_activity']) : 'Not set'); ?></div>
+                        <div>Session Lifetime: <?php echo e(isset($_SESSION['last_activity']) ? (time() - $_SESSION['last_activity']) : 'N/A'); ?> seconds</div>
                     </div>
                 </div>
             </div>
@@ -230,11 +288,23 @@ if (!file_exists($unauthorized_file)) {
                             </a>
                         </li>
                         <li class="nav-item mt-3">
-                            <a class="nav-link text-warning" href="logout.php">
+                            <a class="nav-link text-warning" href="logout.php" onclick="sendLogoutSignal()">
                                 <i class="fas fa-sign-out-alt me-2"></i>Logout
                             </a>
                         </li>
                     </ul>
+                    
+                    <!-- Session Status in Sidebar -->
+                    <div class="mt-4 pt-3 border-top border-secondary">
+                        <div class="text-center">
+                            <small class="text-light">Session Status</small>
+                            <div class="progress mt-2" style="height: 6px;">
+                                <div id="sessionProgress" class="progress-bar bg-success" 
+                                     style="width: 100%" role="progressbar"></div>
+                            </div>
+                            <small id="sessionTime" class="text-light">30:00 remaining</small>
+                        </div>
+                    </div>
                 </div>
             </nav>
 
@@ -255,6 +325,9 @@ if (!file_exists($unauthorized_file)) {
                         <a href="staff_dashboard.php" class="btn btn-sm btn-outline-primary ms-2">
                             <i class="fas fa-sync-alt me-1"></i>Normal Mode
                         </a>
+                        <button id="toggleTimer" class="btn btn-sm btn-outline-warning ms-2">
+                            <i class="fas fa-clock me-1"></i>Show Timer
+                        </button>
                     </div>
                 </div>
 
@@ -262,6 +335,9 @@ if (!file_exists($unauthorized_file)) {
                 <div class="alert alert-success">
                     <i class="fas fa-check-circle me-2"></i>
                     <strong>Dashboard Loaded Successfully!</strong> Your session is active and database is connected.
+                    <span id="autoLogoutInfo" class="fst-italic">
+                        (Auto-logout after 30 minutes of inactivity or browser close)
+                    </span>
                 </div>
 
                 <!-- User Information Card -->
@@ -285,9 +361,52 @@ if (!file_exists($unauthorized_file)) {
                                 <p><strong>Session Status:</strong> 
                                     <span class="badge bg-success">Active</span>
                                 </p>
-                                <p><strong>Database Status:</strong> 
-                                    <span class="badge bg-success">Connected</span>
+                                <p><strong>Session Lifetime:</strong> 
+                                    <span id="sessionLifetime" class="badge bg-info">
+                                        <?php echo e(isset($_SESSION['last_activity']) ? floor((time() - $_SESSION['last_activity'])/60) : '0'); ?> min
+                                    </span>
                                 </p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Auto-Logout Settings Card -->
+                <div class="card mb-4">
+                    <div class="card-header bg-info text-white">
+                        <h5 class="mb-0"><i class="fas fa-shield-alt me-2"></i>Security & Auto-Logout Settings</h5>
+                    </div>
+                    <div class="card-body">
+                        <div class="row">
+                            <div class="col-md-6">
+                                <h6><i class="fas fa-clock text-primary me-2"></i>Session Timeout</h6>
+                                <div class="mb-3">
+                                    <div class="d-flex justify-content-between">
+                                        <small>Time until auto-logout:</small>
+                                        <small id="timeRemaining">30 minutes</small>
+                                    </div>
+                                    <div class="progress" style="height: 10px;">
+                                        <div id="timeoutProgress" class="progress-bar bg-success" 
+                                             style="width: 100%" role="progressbar"></div>
+                                    </div>
+                                </div>
+                                <div class="form-check form-switch">
+                                    <input class="form-check-input" type="checkbox" id="enableTimer" checked>
+                                    <label class="form-check-label" for="enableTimer">Show countdown timer</label>
+                                </div>
+                            </div>
+                            <div class="col-md-6">
+                                <h6><i class="fas fa-laptop text-warning me-2"></i>Browser Close Protection</h6>
+                                <p class="mb-2">Your session will automatically end when you:</p>
+                                <ul class="mb-3">
+                                    <li>Close the browser tab or window</li>
+                                    <li>Remain inactive for 30 minutes</li>
+                                    <li>Manually logout</li>
+                                </ul>
+                                <div class="alert alert-warning small mb-0">
+                                    <i class="fas fa-exclamation-triangle me-2"></i>
+                                    For security, always logout when using shared computers
+                                </div>
                             </div>
                         </div>
                     </div>
@@ -371,25 +490,32 @@ if (!file_exists($unauthorized_file)) {
                             </div>
                             <div class="card-body">
                                 <div class="row">
-                                    <div class="col-md-4">
+                                    <div class="col-md-3">
                                         <div class="alert alert-success">
                                             <i class="fas fa-check-circle me-2"></i>
                                             <strong>Database</strong><br>
                                             Connection successful
                                         </div>
                                     </div>
-                                    <div class="col-md-4">
+                                    <div class="col-md-3">
                                         <div class="alert alert-success">
                                             <i class="fas fa-check-circle me-2"></i>
                                             <strong>Session</strong><br>
                                             Active and valid
                                         </div>
                                     </div>
-                                    <div class="col-md-4">
+                                    <div class="col-md-3">
                                         <div class="alert alert-<?php echo $pharmacy ? 'success' : 'warning'; ?>">
                                             <i class="fas fa-<?php echo $pharmacy ? 'check-circle' : 'exclamation-triangle'; ?> me-2"></i>
                                             <strong>Pharmacy</strong><br>
                                             <?php echo $pharmacy ? 'Associated' : 'Not configured'; ?>
+                                        </div>
+                                    </div>
+                                    <div class="col-md-3">
+                                        <div class="alert alert-info">
+                                            <i class="fas fa-shield-alt me-2"></i>
+                                            <strong>Auto-Logout</strong><br>
+                                            Active (30 min)
                                         </div>
                                     </div>
                                 </div>
@@ -411,6 +537,7 @@ if (!file_exists($unauthorized_file)) {
                                     <li><strong>Add a pharmacy</strong> if you haven't already</li>
                                     <li><strong>Test the login/logout</strong> process</li>
                                     <li><strong>Check other dashboard pages</strong> (admin_dashboard.php, etc.)</li>
+                                    <li><strong>Test auto-logout</strong> by closing browser or waiting 30 minutes</li>
                                 </ol>
                                 <div class="mt-3">
                                     <a href="?debug=1" class="btn btn-outline-info me-2">
@@ -419,7 +546,10 @@ if (!file_exists($unauthorized_file)) {
                                     <a href="login.php" class="btn btn-outline-secondary me-2">
                                         <i class="fas fa-sign-in-alt me-1"></i>Test Login
                                     </a>
-                                    <a href="logout.php" class="btn btn-outline-danger">
+                                    <button onclick="simulateInactivity()" class="btn btn-outline-warning me-2">
+                                        <i class="fas fa-hourglass-end me-1"></i>Test Timeout
+                                    </button>
+                                    <a href="logout.php" class="btn btn-outline-danger" onclick="sendLogoutSignal()">
                                         <i class="fas fa-sign-out-alt me-1"></i>Test Logout
                                     </a>
                                 </div>
@@ -437,21 +567,177 @@ if (!file_exists($unauthorized_file)) {
             <small class="text-muted">
                 MyPharmaV1 Pharmacy System | PHP <?php echo phpversion(); ?> | 
                 <a href="?debug=1" class="text-decoration-none">Debug Mode</a> | 
-                <a href="staff_dashboard.php" class="text-decoration-none">Normal Mode</a>
+                <a href="staff_dashboard.php" class="text-decoration-none">Normal Mode</a> |
+                <span id="sessionStatus" class="text-success">Session Active</span>
             </small>
         </div>
     </footer>
 
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/js/bootstrap.bundle.min.js"></script>
     <script>
+        // ============================================
+        // AUTO LOGOUT FUNCTIONALITY
+        // ============================================
+        
+        // Session timeout settings (30 minutes = 1800 seconds)
+        const SESSION_TIMEOUT = 1800;
+        let lastActivity = Date.now();
+        let inactivityTimer;
+        
+        // Function to send logout signal to server
+        function sendLogoutSignal() {
+            // Use sendBeacon if available (works best on browser close)
+            if (navigator.sendBeacon) {
+                navigator.sendBeacon('logout.php');
+            } else {
+                // Fallback for older browsers
+                const xhr = new XMLHttpRequest();
+                xhr.open('GET', 'logout.php', false); // Synchronous is okay here
+                try {
+                    xhr.send();
+                } catch (e) {
+                    // Silently handle errors
+                }
+            }
+            return true;
+        }
+        
+        // Function to update user activity
+        function updateActivity() {
+            lastActivity = Date.now();
+            updateTimerDisplay();
+            
+            // Also send heartbeat to server to keep session alive
+            fetch('keepalive.php?' + new Date().getTime())
+                .catch(() => {
+                    // Silently handle errors
+                });
+        }
+        
+        // Function to update countdown timer display
+        function updateTimerDisplay() {
+            const now = Date.now();
+            const elapsedSeconds = Math.floor((now - lastActivity) / 1000);
+            const remainingSeconds = SESSION_TIMEOUT - elapsedSeconds;
+            
+            if (remainingSeconds <= 0) {
+                // Session expired - redirect to login
+                window.location.href = 'login.php?error=session_expired';
+                return;
+            }
+            
+            const minutes = Math.floor(remainingSeconds / 60);
+            const seconds = remainingSeconds % 60;
+            
+            // Update countdown display
+            document.getElementById('countdown').textContent = 
+                `${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
+            
+            // Update progress bar
+            const progressPercent = (remainingSeconds / SESSION_TIMEOUT) * 100;
+            document.getElementById('sessionProgress').style.width = `${progressPercent}%`;
+            document.getElementById('timeoutProgress').style.width = `${progressPercent}%`;
+            
+            // Change color based on remaining time
+            let progressBar = document.getElementById('sessionProgress');
+            let timeoutBar = document.getElementById('timeoutProgress');
+            
+            if (remainingSeconds < 300) { // Less than 5 minutes
+                progressBar.className = 'progress-bar bg-danger';
+                timeoutBar.className = 'progress-bar bg-danger';
+                document.getElementById('sessionTime').textContent = `${minutes}:${seconds.toString().padStart(2, '0')} remaining (LOW)`;
+            } else if (remainingSeconds < 600) { // Less than 10 minutes
+                progressBar.className = 'progress-bar bg-warning';
+                timeoutBar.className = 'progress-bar bg-warning';
+                document.getElementById('sessionTime').textContent = `${minutes}:${seconds.toString().padStart(2, '0')} remaining`;
+            } else {
+                progressBar.className = 'progress-bar bg-success';
+                timeoutBar.className = 'progress-bar bg-success';
+                document.getElementById('sessionTime').textContent = `${minutes} minutes remaining`;
+            }
+            
+            // Update time remaining text
+            document.getElementById('timeRemaining').textContent = 
+                `${minutes}:${seconds.toString().padStart(2, '0')}`;
+                
+            // Update session lifetime display
+            const lifetimeMinutes = Math.floor(elapsedSeconds / 60);
+            document.getElementById('sessionLifetime').textContent = `${lifetimeMinutes} min`;
+        }
+        
+        // Function to simulate inactivity for testing
+        function simulateInactivity() {
+            if (confirm('Simulate 30 minutes of inactivity? This will log you out.')) {
+                // Set last activity to 31 minutes ago
+                lastActivity = Date.now() - (31 * 60 * 1000);
+                updateTimerDisplay();
+            }
+        }
+        
+        // Set up event listeners for user activity
+        ['mousemove', 'keydown', 'click', 'scroll', 'touchstart'].forEach(eventType => {
+            document.addEventListener(eventType, updateActivity);
+        });
+        
+        // Set up interval to update timer every second
+        setInterval(updateTimerDisplay, 1000);
+        
+        // Initial timer update
+        updateTimerDisplay();
+        
+        // Set up browser close detection
+        window.addEventListener('beforeunload', function(event) {
+            // Optional: Show confirmation message
+            // Uncomment next line if you want to warn users
+            // event.returnValue = 'Your session will end when you close the browser. Are you sure?';
+            
+            sendLogoutSignal();
+        });
+        
+        // Extra safety: also listen for page unload
+        window.addEventListener('unload', function() {
+            sendLogoutSignal();
+        });
+        
+        // Toggle timer visibility
+        document.getElementById('toggleTimer').addEventListener('click', function() {
+            const timer = document.getElementById('sessionTimer');
+            timer.style.display = timer.style.display === 'none' ? 'block' : 'none';
+            this.innerHTML = timer.style.display === 'none' 
+                ? '<i class="fas fa-clock me-1"></i>Show Timer' 
+                : '<i class="fas fa-eye-slash me-1"></i>Hide Timer';
+        });
+        
+        // Enable/disable timer display
+        document.getElementById('enableTimer').addEventListener('change', function() {
+            const timer = document.getElementById('sessionTimer');
+            const sidebarTimer = document.querySelector('.progress');
+            const sidebarTime = document.getElementById('sessionTime');
+            
+            if (this.checked) {
+                timer.style.display = 'block';
+                sidebarTimer.style.display = 'block';
+                sidebarTime.style.display = 'block';
+            } else {
+                timer.style.display = 'none';
+                sidebarTimer.style.display = 'none';
+                sidebarTime.style.display = 'none';
+            }
+        });
+        
         // Simple confirmation for logout
         document.querySelectorAll('a[href="logout.php"]').forEach(link => {
             link.addEventListener('click', function(e) {
                 if (!confirm('Are you sure you want to logout?')) {
                     e.preventDefault();
+                } else {
+                    sendLogoutSignal();
                 }
             });
         });
+        
+        // Initial activity update
+        updateActivity();
     </script>
 </body>
 </html>
