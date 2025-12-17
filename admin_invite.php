@@ -21,22 +21,45 @@ if (isset($_POST['generate_invite'])) {
     $stmt->bind_param("ssi", $token, $invite_type, $_SESSION['user_id']);
     
     if ($stmt->execute()) {
-        $message = "Invitation generated successfully! Share this link: " . ($_SERVER['HTTP_HOST'] . dirname($_SERVER['PHP_SELF']) . "/register_invite.php?token=" . $token);
+        $full_link = "http://" . $_SERVER['HTTP_HOST'] . dirname($_SERVER['PHP_SELF']) . "/register_invite.php?token=" . $token;
+        $message = "Invitation generated successfully!";
     } else {
-        $error = "Error generating invitation.";
+        $error = "Error generating invitation: " . $conn->error;
     }
     $stmt->close();
 }
 
-// Get existing invitations
-$stmt = $conn->prepare("SELECT i.*, u.name as created_by_name FROM invitations i JOIN users u ON i.created_by = u.id WHERE i.used = 0 ORDER BY i.created_at DESC");
-$stmt->execute();
-$invitations_result = $stmt->get_result();
-$invitations = [];
-while ($row = $invitations_result->fetch_assoc()) {
-    $invitations[] = $row;
+// Delete invitation
+if (isset($_POST['delete_invite'])) {
+    $invite_id = $_POST['invite_id'];
+    $stmt = $conn->prepare("DELETE FROM invitations WHERE id = ? AND used = 0");
+    $stmt->bind_param("i", $invite_id);
+    
+    if ($stmt->execute()) {
+        $message = "Invitation deleted successfully!";
+    } else {
+        $error = "Error deleting invitation: " . $conn->error;
+    }
+    $stmt->close();
 }
-$stmt->close();
+
+// Get existing invitations with error handling
+$invitations = [];
+try {
+    $stmt = $conn->prepare("SELECT i.*, u.name as created_by_name FROM invitations i LEFT JOIN users u ON i.created_by = u.id WHERE i.used = 0 ORDER BY i.created_at DESC");
+    if ($stmt) {
+        $stmt->execute();
+        $invitations_result = $stmt->get_result();
+        while ($row = $invitations_result->fetch_assoc()) {
+            $invitations[] = $row;
+        }
+        $stmt->close();
+    } else {
+        $error = "Error preparing statement: " . $conn->error;
+    }
+} catch (Exception $e) {
+    $error = "Error retrieving invitations: " . $e->getMessage();
+}
 ?>
 
 <!DOCTYPE html>
@@ -158,7 +181,10 @@ $stmt->close();
                                                 </tr>
                                             </thead>
                                             <tbody>
-                                                <?php foreach ($invitations as $invite): ?>
+                                                <?php foreach ($invitations as $invite): 
+                                                    $full_link = "http://" . $_SERVER['HTTP_HOST'] . dirname($_SERVER['PHP_SELF']) . "/register_invite.php?token=" . $invite['token'];
+                                                    $created_by_name = !empty($invite['created_by_name']) ? $invite['created_by_name'] : 'Unknown User';
+                                                ?>
                                                     <tr>
                                                         <td><?php echo substr($invite['token'], 0, 8) . '...'; ?></td>
                                                         <td>
@@ -168,12 +194,18 @@ $stmt->close();
                                                                 <span class="badge bg-success">Pharmacy Owner</span>
                                                             <?php endif; ?>
                                                         </td>
-                                                        <td><?php echo htmlspecialchars($invite['created_by_name']); ?></td>
+                                                        <td><?php echo htmlspecialchars($created_by_name); ?></td>
                                                         <td><?php echo date('M j, Y g:i A', strtotime($invite['created_at'])); ?></td>
                                                         <td>
-                                                            <button class="btn btn-sm btn-outline-primary" onclick="copyToClipboard('<?php echo $_SERVER['HTTP_HOST'] . dirname($_SERVER['PHP_SELF']) . "/register_invite.php?token=" . $invite['token']; ?>')">
+                                                            <button class="btn btn-sm btn-outline-primary me-1" onclick="copyToClipboard('<?php echo $full_link; ?>')">
                                                                 <i class="fas fa-copy"></i> Copy Link
                                                             </button>
+                                                            <form method="POST" class="d-inline" onsubmit="return confirm('Are you sure you want to delete this invitation?');">
+                                                                <input type="hidden" name="invite_id" value="<?php echo $invite['id']; ?>">
+                                                                <button type="submit" name="delete_invite" class="btn btn-sm btn-outline-danger">
+                                                                    <i class="fas fa-trash"></i> Delete
+                                                                </button>
+                                                            </form>
                                                         </td>
                                                     </tr>
                                                 <?php endforeach; ?>
@@ -196,6 +228,14 @@ $stmt->close();
                 alert('Link copied to clipboard!');
             }, function(err) {
                 console.error('Could not copy text: ', err);
+                // Fallback for older browsers
+                var textArea = document.createElement("textarea");
+                textArea.value = text;
+                document.body.appendChild(textArea);
+                textArea.select();
+                document.execCommand('copy');
+                document.body.removeChild(textArea);
+                alert('Link copied to clipboard!');
             });
         }
     </script>

@@ -47,15 +47,16 @@ if ($stmt) {
     if ($result && $result->num_rows > 0) {
         $pharmacy = $result->fetch_assoc();
         
-        // Get inventory statistics
+        // Get inventory statistics using the correct relationship
         $stats_stmt = $conn->prepare("
             SELECT 
                 COUNT(*) as total,
-                SUM(CASE WHEN stock_quantity > 10 THEN 1 ELSE 0 END) as in_stock,
-                SUM(CASE WHEN stock_quantity BETWEEN 1 AND 10 THEN 1 ELSE 0 END) as low_stock,
-                SUM(CASE WHEN stock_quantity = 0 OR stock_quantity IS NULL THEN 1 ELSE 0 END) as out_of_stock
-            FROM medicines 
-            WHERE pharmacy_id = ?
+                SUM(CASE WHEN pm.stock > 10 THEN 1 ELSE 0 END) as in_stock,
+                SUM(CASE WHEN pm.stock BETWEEN 1 AND 10 THEN 1 ELSE 0 END) as low_stock,
+                SUM(CASE WHEN pm.stock = 0 OR pm.stock IS NULL THEN 1 ELSE 0 END) as out_of_stock
+            FROM medicines m
+            JOIN pharmacy_medicines pm ON m.id = pm.medicine_id
+            WHERE pm.pharmacy_id = ?
         ");
         if ($stats_stmt) {
             $stats_stmt->bind_param("i", $pharmacy['id']);
@@ -224,15 +225,16 @@ if (!$pharmacy) {
                             </div>
                             <div class="card-body">
                                 <?php
-                                // Get low stock medicines
+                                // Get low stock medicines using the correct relationship
                                 $low_stock_medicines = [];
                                 if ($pharmacy) {
                                     $low_stmt = $conn->prepare("
-                                        SELECT name, stock_quantity 
-                                        FROM medicines 
-                                        WHERE pharmacy_id = ? 
-                                        AND stock_quantity BETWEEN 1 AND 10
-                                        ORDER BY stock_quantity ASC 
+                                        SELECT m.name, pm.stock as stock_quantity 
+                                        FROM medicines m
+                                        JOIN pharmacy_medicines pm ON m.id = pm.medicine_id
+                                        WHERE pm.pharmacy_id = ? 
+                                        AND pm.stock BETWEEN 1 AND 10
+                                        ORDER BY pm.stock ASC 
                                         LIMIT 5
                                     ");
                                     if ($low_stmt) {

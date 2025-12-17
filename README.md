@@ -38,6 +38,22 @@ If you're updating from a previous version and encounter "Unknown column 'create
 1. Visit http://localhost/MyPharmaV1/update_database.php in your browser
 2. This script will add the missing `created_at` columns to your existing tables
 
+## Default Accounts
+
+- **Admin**: admin@mypharma.com / password
+- **Staff**: staff@mypharma.com / password
+- **User**: user@mypharma.com / password
+
+## Enhanced User Registration
+
+During registration, users can now optionally provide pharmacy information:
+- Pharmacy name
+- Full address
+- Exact GPS coordinates (latitude and longitude)
+- Contact number
+
+This information helps admins verify the pharmacy location before approval.
+
 ## Pharmacy Management
 
 1. **Registering a New Pharmacy**:

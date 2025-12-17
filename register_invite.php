@@ -68,7 +68,7 @@ if (empty($error) && $_SERVER['REQUEST_METHOD'] == 'POST') {
                 // Hash password
                 $hashed_password = password_hash($password, PASSWORD_DEFAULT);
                 
-                // Insert user into database
+                // SECURITY FIX: All new users start with 'pending' status for manual approval
                 if ($invite_type === 'pharmacy_owner') {
                     // Pharmacy owner registration
                     $pharmacy_name = $_POST['pharmacy_name'];
@@ -80,11 +80,12 @@ if (empty($error) && $_SERVER['REQUEST_METHOD'] == 'POST') {
                     if (empty($pharmacy_name) || empty($pharmacy_address) || empty($pharmacy_lat) || empty($pharmacy_lng) || empty($pharmacy_contact)) {
                         $error = "Please provide complete pharmacy information.";
                     } else {
+                        // Create user with 'pending' role and 'pending' status for admin approval
                         $insertStmt = $conn->prepare("INSERT INTO users (name, email, password, role, status, pharmacy_name, pharmacy_address, pharmacy_lat, pharmacy_lng, pharmacy_contact) VALUES (?, ?, ?, 'pending', 'pending', ?, ?, ?, ?, ?, ?)");
                         $insertStmt->bind_param("ssssssssss", $name, $email, $hashed_password, $pharmacy_name, $pharmacy_address, $pharmacy_lat, $pharmacy_lng, $pharmacy_contact);
                     }
                 } else {
-                    // Staff member registration
+                    // Staff member registration - create with 'pending' role and 'pending' status
                     $insertStmt = $conn->prepare("INSERT INTO users (name, email, password, role, status) VALUES (?, ?, ?, 'pending', 'pending')");
                     $insertStmt->bind_param("sss", $name, $email, $hashed_password);
                 }
@@ -97,7 +98,7 @@ if (empty($error) && $_SERVER['REQUEST_METHOD'] == 'POST') {
                     $updateStmt->execute();
                     $updateStmt->close();
                     
-                    $success = "Registration successful! Your account is pending approval by an administrator. You will be notified once approved.";
+                    $success = "Registration successful! Your account is pending security verification by an administrator. You will be notified once approved.";
                 } elseif (isset($insertStmt)) {
                     $error = "Registration failed. Please try again.";
                     $insertStmt->close();

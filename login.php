@@ -1,50 +1,9 @@
 <?php
-require_once 'auth.php';
-
-// After successful login:
-$_SESSION['user_id'] = $user['id'];
-$_SESSION['role'] = $user['role'];
-$_SESSION['last_activity'] = time(); // Important for timeout
-
-// Start session with secure settings
 session_start();
-
-// Set session cookie to expire on browser close
-// This is the most important setting for browser close logout
-ini_set('session.cookie_lifetime', 0);
-ini_set('session.cookie_httponly', 1); // Prevent JavaScript access to session cookie
-ini_set('session.use_only_cookies', 1); // Use only cookies for sessions
-
-// Enable error reporting for debugging (remove in production)
-error_reporting(E_ALL);
-ini_set('display_errors', 1);
-
-// Check if db.php exists
-if (!file_exists('db.php')) {
-    die("Database configuration file (db.php) not found!");
-}
-
 include 'db.php';
-
-// Check database connection
-if ($conn->connect_error) {
-    die("Database connection failed: " . $conn->connect_error);
-}
-
-// Check if user should be logged out due to session timeout
-if (isset($_SESSION['last_activity']) && (time() - $_SESSION['last_activity'] > 1800)) {
-    // Session expired (30 minutes)
-    session_unset();
-    session_destroy();
-    header("Location: login.php?error=session_expired");
-    exit();
-}
 
 // Redirect if already logged in
 if (isset($_SESSION['user_id'])) {
-    // Update last activity time
-    $_SESSION['last_activity'] = time();
-    
     if ($_SESSION['role'] == 'admin') {
         header("Location: admin_dashboard.php");
         exit();
@@ -60,69 +19,55 @@ if (isset($_SESSION['user_id'])) {
 $error = '';
 
 if ($_SERVER['REQUEST_METHOD'] == 'POST') {
-    $email = isset($_POST['email']) ? trim($_POST['email']) : '';
-    $password = isset($_POST['password']) ? trim($_POST['password']) : '';
+    $email = $_POST['email'];
+    $password = $_POST['password'];
     
     // Validate input
-    if (empty($email) || empty($password)) {
-        $error = "Please fill in all fields.";
-    } else {
-        // FIXED: Removed 'status' column from query
-        $stmt = $conn->prepare("SELECT id, name, email, password, role FROM users WHERE email = ?");
+    if (!empty($email) && !empty($password)) {
+        // Prepare statement to prevent SQL injection
+        $stmt = $conn->prepare("SELECT id, name, email, password, role, status FROM users WHERE email = ?");
+        $stmt->bind_param("s", $email);
+        $stmt->execute();
+        $result = $stmt->get_result();
         
-        if (!$stmt) {
-            $error = "Database query preparation failed: " . $conn->error;
-        } else {
-            $stmt->bind_param("s", $email);
+        if ($result->num_rows == 1) {
+            $user = $result->fetch_assoc();
             
-            if (!$stmt->execute()) {
-                $error = "Query execution failed: " . $stmt->error;
-            } else {
-                $result = $stmt->get_result();
-                
-                if ($result->num_rows == 1) {
-                    $user = $result->fetch_assoc();
-                    
-                    // Verify password
-                    if (password_verify($password, $user['password'])) {
-                        // FIXED: Check user role instead of status
-                        // 'pending' role means not approved yet
-                        if ($user['role'] == 'pending') {
-                            $error = "Your account is pending approval by an administrator.";
-                        } else {
-                            // Set session variables
-                            $_SESSION['user_id'] = $user['id'];
-                            $_SESSION['name'] = $user['name'];
-                            $_SESSION['email'] = $user['email'];
-                            $_SESSION['role'] = $user['role'];
-                            $_SESSION['last_activity'] = time(); // IMPORTANT: Set activity timestamp
-                            $_SESSION['session_start'] = time(); // Track session start time
-                            
-                            // Regenerate session ID for security (prevent session fixation)
-                            session_regenerate_id(true);
-                            
-                            // Redirect based on role
-                            if ($user['role'] == 'admin') {
-                                header("Location: admin_dashboard.php");
-                            } elseif ($user['role'] == 'staff') {
-                                header("Location: staff_dashboard.php");
-                            } else {
-                                header("Location: index.php");
-                            }
-                            exit();
-                        }
-                    } else {
-                        $error = "Invalid email or password.";
-                    }
+            // Verify password
+            if (password_verify($password, $user['password'])) {
+                // Check if user is approved
+                if ($user['status'] != 'approved') {
+                    $error = "Your account is pending approval by an administrator. Please wait for approval before logging in.";
                 } else {
-                    $error = "Invalid email or password.";
+                    // Set session variables
+                    $_SESSION['user_id'] = $user['id'];
+                    $_SESSION['name'] = $user['name'];
+                    $_SESSION['email'] = $user['email'];
+                    $_SESSION['role'] = $user['role'];
+                    
+                    // Redirect based on role
+                    if ($user['role'] == 'admin') {
+                        header("Location: admin_dashboard.php");
+                    } elseif ($user['role'] == 'staff') {
+                        header("Location: staff_dashboard.php");
+                    } else {
+                        header("Location: index.php");
+                    }
+                    exit();
                 }
+            } else {
+                $error = "Invalid email or password.";
             }
-            $stmt->close();
+        } else {
+            $error = "Invalid email or password.";
         }
+        $stmt->close();
+    } else {
+        $error = "Please fill in all fields.";
     }
 }
 ?>
+
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -176,27 +121,19 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
                     
                     <?php if (!empty($error)): ?>
                         <div class="alert alert-danger alert-dismissible fade show" role="alert">
-                            <strong>Error:</strong> <?php echo htmlspecialchars($error); ?>
+                            <?php echo $error; ?>
                             <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
                         </div>
                     <?php endif; ?>
                     
-                    <?php if (isset($_GET['error']) && $_GET['error'] == 'session_expired'): ?>
-                        <div class="alert alert-warning alert-dismissible fade show" role="alert">
-                            <strong>Session Expired:</strong> Your session has expired due to inactivity. Please login again.
-                            <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
-                        </div>
-                    <?php endif; ?>
-                    
-                    <form method="POST" action="">
+                    <form method="POST">
                         <div class="mb-3">
                             <label for="email" class="form-label">Email Address</label>
                             <div class="input-group">
                                 <span class="input-group-text">
                                     <i class="fas fa-envelope"></i>
                                 </span>
-                                <input type="email" class="form-control" id="email" name="email" required 
-                                       value="<?php echo isset($_POST['email']) ? htmlspecialchars($_POST['email']) : ''; ?>">
+                                <input type="email" class="form-control" id="email" name="email" required>
                             </div>
                         </div>
                         
@@ -228,37 +165,5 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
     </div>
 
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/js/bootstrap.bundle.min.js"></script>
-    <script>
-        // Form validation
-        document.querySelector('form').addEventListener('submit', function(e) {
-            const email = document.getElementById('email').value.trim();
-            const password = document.getElementById('password').value.trim();
-            
-            if (!email || !password) {
-                e.preventDefault();
-                alert('Please fill in both email and password fields.');
-                return false;
-            }
-            
-            // Add loading state
-            const submitBtn = this.querySelector('button[type="submit"]');
-            const originalHTML = submitBtn.innerHTML;
-            submitBtn.innerHTML = '<i class="fas fa-spinner fa-spin me-2"></i>Logging in...';
-            submitBtn.disabled = true;
-            
-            // Re-enable after 3 seconds in case of error
-            setTimeout(() => {
-                submitBtn.innerHTML = originalHTML;
-                submitBtn.disabled = false;
-            }, 3000);
-            
-            return true;
-        });
-        
-        // Auto-focus email field
-        document.addEventListener('DOMContentLoaded', function() {
-            document.getElementById('email').focus();
-        });
-    </script>
 </body>
 </html>

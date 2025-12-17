@@ -42,8 +42,14 @@ if ($stmt) {
     if ($result && $result->num_rows > 0) {
         $pharmacy = $result->fetch_assoc();
         
-        // Get medicines for this pharmacy
-        $med_stmt = $conn->prepare("SELECT * FROM medicines WHERE pharmacy_id = ? ORDER BY name");
+        // Get medicines for this pharmacy using the correct relationship
+        $med_stmt = $conn->prepare("
+            SELECT m.*, pm.price, pm.stock as stock_quantity, pm.expiry_date
+            FROM medicines m
+            JOIN pharmacy_medicines pm ON m.id = pm.medicine_id
+            WHERE pm.pharmacy_id = ?
+            ORDER BY m.name
+        ");
         if ($med_stmt) {
             $med_stmt->bind_param("i", $pharmacy['id']);
             $med_stmt->execute();
@@ -164,11 +170,8 @@ if (!$pharmacy) {
                                         <tr>
                                             <td>
                                                 <strong><?php echo e($medicine['name']); ?></strong>
-                                                <?php if ($medicine['prescription_required']): ?>
-                                                    <span class="badge bg-warning ms-1" title="Prescription Required">RX</span>
-                                                <?php endif; ?>
                                             </td>
-                                            <td><?php echo e($medicine['generic_name']); ?></td>
+                                            <td><?php echo e($medicine['scientific_name']); ?></td>
                                             <td>
                                                 <span class="badge bg-info"><?php echo e($medicine['category']); ?></span>
                                             </td>

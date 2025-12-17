@@ -1,5 +1,6 @@
 -- ===========================================
-
+-- ADD IN-DEMAND MEDICINES FOR PAGADIAN CITY
+-- AND STOCK THEM IN ALL PHARMACIES
 -- ===========================================
 
 -- Start transaction for data consistency
@@ -349,7 +350,7 @@ DROP TEMPORARY TABLE IF EXISTS new_medicine_ids;
 COMMIT;
 
 -- --------------------------------------------------------
--- 9. VERIFICATION QUERIES
+-- 9. VERIFICATION QUERIES (CORRECTED SYNTAX)
 -- --------------------------------------------------------
 
 SELECT '========================================' as '';
@@ -359,8 +360,8 @@ SELECT '' as '';
 
 SELECT 'DATABASE STATISTICS AFTER UPDATE:' as '';
 SELECT '========================================' as '';
-SELECT CONCAT('Total Medicines: ', COUNT(*)) FROM `medicines`;
-SELECT CONCAT('Total Pharmacy Medicine Records: ', COUNT(*)) FROM `pharmacy_medicines`;
+SELECT CONCAT('Total Medicines: ', COUNT(*)) as '' FROM `medicines`;
+SELECT CONCAT('Total Pharmacy Medicine Records: ', COUNT(*)) as '' FROM `pharmacy_medicines`;
 SELECT '' as '';
 
 SELECT 'NEWLY ADDED MEDICINES:' as '';
@@ -381,10 +382,9 @@ SELECT
 FROM pharmacy_medicines pm
 JOIN pharmacies p ON pm.pharmacy_id = p.id
 JOIN medicines m ON pm.medicine_id = m.id
-WHERE m.id IN (
-    SELECT id FROM medicines 
-    WHERE name IN ('Dolfenal', 'Glucophage', 'Norvasc', 'Ventolin Syrup', 'Augmentin', 
-                   'Losec', 'Claritin', 'Imodium', 'Poten-Cee', 'Solmux')
+WHERE m.name IN (
+    'Dolfenal', 'Glucophage', 'Norvasc', 'Ventolin Syrup', 'Augmentin',
+    'Losec', 'Claritin', 'Imodium', 'Poten-Cee', 'Solmux'
 )
 GROUP BY p.id, p.name
 ORDER BY p.name;
@@ -404,28 +404,41 @@ WHERE m.name = 'Solmux'
 ORDER BY p.name;
 SELECT '' as '';
 
+-- CORRECTED VERSION OF THE PROBLEMATIC QUERY
 SELECT 'CATEGORY DISTRIBUTION OF NEW MEDICINES:' as '';
 SELECT '========================================' as '';
 SELECT 
-    category as 'Medicine Category',
-    COUNT(*) as 'Number of Items',
-    CONCAT('₱', FORMAT(MIN(
-        SELECT MIN(price) 
-        FROM pharmacy_medicines pm2 
-        WHERE pm2.medicine_id = m.id
-    ), 2)) as 'Lowest Price',
-    CONCAT('₱', FORMAT(MAX(
-        SELECT MAX(price) 
-        FROM pharmacy_medicines pm2 
-        WHERE pm2.medicine_id = m.id
-    ), 2)) as 'Highest Price'
+    m.category as 'Medicine Category',
+    COUNT(DISTINCT m.id) as 'Number of Items',
+    CONCAT('₱', FORMAT(MIN(pm.price), 2)) as 'Lowest Price',
+    CONCAT('₱', FORMAT(MAX(pm.price), 2)) as 'Highest Price'
 FROM medicines m
+JOIN pharmacy_medicines pm ON m.id = pm.medicine_id
 WHERE m.name IN (
     'Dolfenal', 'Glucophage', 'Norvasc', 'Ventolin Syrup', 'Augmentin',
     'Losec', 'Claritin', 'Imodium', 'Poten-Cee', 'Solmux'
 )
-GROUP BY category
-ORDER BY COUNT(*) DESC;
+GROUP BY m.category
+ORDER BY COUNT(DISTINCT m.id) DESC;
+SELECT '' as '';
+
+SELECT 'PRICE RANGE FOR EACH NEW MEDICINE:' as '';
+SELECT '========================================' as '';
+SELECT 
+    m.name as 'Medicine',
+    m.category as 'Category',
+    CONCAT('₱', FORMAT(MIN(pm.price), 2)) as 'Lowest Price',
+    CONCAT('₱', FORMAT(MAX(pm.price), 2)) as 'Highest Price',
+    CONCAT('₱', FORMAT(AVG(pm.price), 2)) as 'Average Price',
+    COUNT(DISTINCT pm.pharmacy_id) as 'Available in Pharmacies'
+FROM medicines m
+JOIN pharmacy_medicines pm ON m.id = pm.medicine_id
+WHERE m.name IN (
+    'Dolfenal', 'Glucophage', 'Norvasc', 'Ventolin Syrup', 'Augmentin',
+    'Losec', 'Claritin', 'Imodium', 'Poten-Cee', 'Solmux'
+)
+GROUP BY m.id, m.name, m.category
+ORDER BY m.category, m.name;
 SELECT '' as '';
 
 SELECT 'READY FOR USE!' as '';

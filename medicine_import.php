@@ -1,4 +1,4 @@
-NEW_FILE_CODE
+
 <?php
 require_once 'db.php';
 require_once 'auth.php';
@@ -79,4 +79,88 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
   </div>
 </div>
 </body>
-</html>
+</html>// ... existing code ...
+    <div class="row g-3 mb-4" id="metricCards">
+        <div class="col-md-3">
+            <div class="card p-3">
+                <div class="h2 mb-0" id="totalMedicines">0</div>
+                <div class="text-muted">Total Medicines</div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card p-3">
+                <div class="h2 mb-0" id="pendingApprovals">0</div>
+                <div class="text-muted">Pending Approvals</div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card p-3">
+                <div class="h2 mb-0" id="totalUsers">0</div>
+                <div class="text-muted">Total Users</div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card p-3">
+                <div class="h2 mb-0" id="totalPharmacies">0</div>
+                <div class="text-muted">Verified Pharmacies</div>
+            </div>
+        </div>
+    </div>
+
+    <div class="row g-3 mb-4">
+        <div class="col-md-6">
+            <div class="card p-3">
+                <div class="h2 mb-0 text-warning" id="lowStock">0</div>
+                <div class="text-muted">Low Stock Items</div>
+            </div>
+        </div>
+        <div class="col-md-6">
+            <div class="card p-3">
+                <div class="h2 mb-0 text-danger" id="expiringSoon">0</div>
+                <div class="text-muted">Expiring Soon</div>
+            </div>
+        </div>
+    </div>
+    // ... existing code ...
+    <div class="card p-3">
+        <h2 class="h6 mb-3">Recent Activity</h2>
+        <div id="recentActivity"></div>
+    </div>
+// ... existing code ...
+<script>
+async function loadMetrics() {
+    const res = await fetch('api/metrics.php');
+    const data = await res.json();
+    document.getElementById('totalMedicines').textContent = data.totalMedicines ?? 0;
+    document.getElementById('pendingApprovals').textContent = data.pendingApprovals ?? 0;
+    document.getElementById('totalUsers').textContent = data.totalUsers ?? 0;
+    document.getElementById('totalPharmacies').textContent = data.totalPharmacies ?? 0;
+    document.getElementById('lowStock').textContent = data.lowStock ?? 0;
+    document.getElementById('expiringSoon').textContent = data.expiringSoon ?? 0;
+    // ... existing chart code ...
+}
+async function loadActivity() {
+    const res = await fetch('api/activity.php?limit=10');
+    const logs = await res.json();
+    const container = document.getElementById('recentActivity');
+    if (!Array.isArray(logs) || logs.length === 0) {
+        container.innerHTML = '<p class="text-muted mb-0">No recent activity.</p>';
+        return;
+    }
+    container.innerHTML = logs.map(l => `
+        <div class="d-flex justify-content-between border-bottom py-2">
+            <div>
+                <strong>${escapeHtml(l.action || '')}</strong>
+                <span class="text-muted">
+                    on ${escapeHtml(l.entity_type || '')} #${Number(l.entity_id || 0)} by ${escapeHtml(l.user_name || 'System')}
+                </span>
+                ${l.details ? `<div class="text-muted small mt-1">${escapeHtml(l.details)}</div>` : ''}
+            </div>
+            <small class="text-muted">${escapeHtml((l.created_at || '').replace('T',' ').slice(0,16))}</small>
+        </div>
+    `).join('');
+}
+function escapeHtml(str){return (str||'').replace(/[&<>"']/g,s=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[s]));}
+loadMetrics();
+loadActivity();
+</script>

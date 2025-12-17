@@ -1,0 +1,17 @@
+{
+  "totalMedicines": 5,
+  "pendingApprovals": 1,
+  "totalUsers": 3,
+  "totalPharmacies": 1,
+  "lowStock": 4,
+  "expiringSoon": 0,
+  "searches7Days": [
+    { "day": "Mon", "count": 42 },
+    { "day": "Tue", "count": 38 },
+    { "day": "Wed", "count": 57 },
+    { "day": "Thu", "count": 35 },
+    { "day": "Fri", "count": 64 },
+    { "day": "Sat", "count": 72 },
+    { "day": "Sun", "count": 50 }
+  ]
+}
